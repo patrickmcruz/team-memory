@@ -5,6 +5,7 @@ import { useTranslation } from '../App';
 
 const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
   const [currentPage, setCurrentPage] = useState(0);
+  const [isFlipping, setIsFlipping] = useState(false);
   const itemsPerPage = 4; // 2x2 grid per page
   const totalPages = Math.ceil(items.length / itemsPerPage);
 
@@ -15,73 +16,230 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
   };
 
   const nextPage = () => {
-    if (currentPage < totalPages - 1) {
-      setCurrentPage(currentPage + 1);
+    if (currentPage < totalPages - 1 && !isFlipping) {
+      setIsFlipping(true);
+      setTimeout(() => {
+        setCurrentPage(currentPage + 1);
+        setIsFlipping(false);
+      }, 600);
     }
   };
 
   const prevPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
+    if (currentPage > 0 && !isFlipping) {
+      setIsFlipping(true);
+      setTimeout(() => {
+        setCurrentPage(currentPage - 1);
+        setIsFlipping(false);
+      }, 600);
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Album Book */}
-      <div className="relative bg-gradient-to-br from-emerald-50 to-white rounded-lg shadow-2xl p-8 border-4 border-emerald-200" style={{ perspective: '2000px' }}>
-        {/* Book Spine Effect */}
-        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-emerald-900 to-emerald-800 rounded-l-lg shadow-inner"></div>
+    <div className="max-w-6xl mx-auto px-4">
+      <style>{`
+        @keyframes page-flip-forward {
+          0% { transform: rotateY(0deg); }
+          50% { transform: rotateY(-90deg); }
+          100% { transform: rotateY(0deg); }
+        }
         
-        {/* Page Content */}
-        <div className="ml-4">
-          <div className="grid grid-cols-2 gap-6 min-h-[500px]">
+        @keyframes page-flip-backward {
+          0% { transform: rotateY(0deg); }
+          50% { transform: rotateY(90deg); }
+          100% { transform: rotateY(0deg); }
+        }
+        
+        .page-flipping-forward {
+          animation: page-flip-forward 0.6s ease-in-out;
+        }
+        
+        .page-flipping-backward {
+          animation: page-flip-backward 0.6s ease-in-out;
+        }
+        
+        /* Paper texture */
+        .paper-texture {
+          background-image: 
+            repeating-linear-gradient(
+              0deg,
+              transparent,
+              transparent 2px,
+              rgba(0,0,0,0.03) 2px,
+              rgba(0,0,0,0.03) 4px
+            );
+        }
+        
+        /* Book shadow effect */
+        .book-shadow {
+          box-shadow: 
+            0 20px 60px rgba(0,0,0,0.3),
+            inset 0 0 0 1px rgba(255,255,255,0.2),
+            inset 40px 0 80px rgba(0,0,0,0.1);
+        }
+        
+        /* Photo polaroid effect */
+        .photo-polaroid {
+          background: linear-gradient(to bottom, #fff 0%, #fff 85%, #f5f5f5 85%, #f5f5f5 100%);
+          box-shadow: 
+            0 4px 8px rgba(0,0,0,0.15),
+            0 0 0 1px rgba(0,0,0,0.05);
+        }
+        
+        .photo-polaroid:hover {
+          transform: translateY(-4px) rotate(2deg);
+          box-shadow: 
+            0 12px 24px rgba(0,0,0,0.25),
+            0 0 0 1px rgba(0,0,0,0.05);
+        }
+      `}</style>
+
+      {/* Album Book with 3D effect */}
+      <div 
+        className="relative book-shadow rounded-r-xl overflow-hidden"
+        style={{ 
+          perspective: '3000px',
+          transformStyle: 'preserve-3d'
+        }}
+      >
+        {/* Book Cover - Left Side (Spine) */}
+        <div 
+          className="absolute left-0 top-0 bottom-0 w-16 z-20"
+          style={{
+            background: 'linear-gradient(90deg, #064e3b 0%, #065f46 20%, #047857 50%, #065f46 80%, #064e3b 100%)',
+            boxShadow: 'inset -5px 0 15px rgba(0,0,0,0.4), inset 5px 0 15px rgba(255,255,255,0.1)',
+          }}
+        >
+          {/* Spine decorative lines */}
+          <div className="absolute top-0 bottom-0 left-2 w-0.5 bg-emerald-300 opacity-30"></div>
+          <div className="absolute top-0 bottom-0 right-2 w-0.5 bg-emerald-900 opacity-50"></div>
+          
+          {/* Book binding holes */}
+          {[...Array(8)].map((_, i) => (
+            <div 
+              key={i}
+              className="absolute left-1/2 transform -translate-x-1/2 w-3 h-3 rounded-full bg-emerald-950 shadow-inner"
+              style={{ 
+                top: `${10 + i * 12}%`,
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.8)'
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Book Pages */}
+        <div 
+          className={`ml-16 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 p-10 paper-texture ${
+            isFlipping ? (currentPage > 0 ? 'page-flipping-backward' : 'page-flipping-forward') : ''
+          }`}
+          style={{
+            minHeight: '600px',
+            backgroundImage: `
+              radial-gradient(circle at 20% 30%, rgba(245, 158, 11, 0.05) 0%, transparent 50%),
+              radial-gradient(circle at 80% 70%, rgba(234, 179, 8, 0.05) 0%, transparent 50%)
+            `,
+          }}
+        >
+          {/* Page corner fold effect */}
+          <div 
+            className="absolute top-0 right-0 w-20 h-20 overflow-hidden pointer-events-none"
+            style={{
+              background: 'linear-gradient(135deg, transparent 0%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)',
+            }}
+          />
+          
+          {/* Page number decoration */}
+          <div className="absolute top-6 left-20 text-emerald-800 opacity-40 font-serif text-sm">
+            ~ Página {currentPage + 1} ~
+          </div>
+          
+          {/* Photos Grid */}
+          <div className="grid grid-cols-2 gap-8 pt-8">
             {getCurrentPageItems().map((item, index) => (
-              <div key={item.id} className="relative bg-white p-3 rounded shadow-lg transform hover:scale-105 transition-all duration-300" style={{ boxShadow: '0 4px 6px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-                <div className="absolute -top-2 -left-2 -right-2 -bottom-2 bg-white transform rotate-1 rounded -z-10 opacity-30"></div>
+              <div 
+                key={item.id} 
+                className="photo-polaroid p-4 rounded-sm transition-all duration-300 cursor-pointer"
+                style={{
+                  transform: `rotate(${index % 2 === 0 ? -1 : 1}deg)`,
+                }}
+              >
                 {item.type === 'image' ? (
-                  <img src={item.dataUrl} alt={item.name} className="w-full h-56 object-cover rounded" />
+                  <img 
+                    src={item.dataUrl} 
+                    alt={item.name} 
+                    className="w-full h-64 object-cover rounded-sm shadow-inner"
+                    style={{ 
+                      border: '1px solid rgba(0,0,0,0.1)',
+                      filter: 'contrast(1.05) brightness(0.98)'
+                    }}
+                  />
                 ) : (
-                  <video src={item.dataUrl} controls className="w-full h-56 object-cover rounded" />
+                  <video 
+                    src={item.dataUrl} 
+                    controls 
+                    className="w-full h-64 object-cover rounded-sm shadow-inner"
+                    style={{ border: '1px solid rgba(0,0,0,0.1)' }}
+                  />
                 )}
-                <div className="mt-2 text-center">
-                  <div className="h-px bg-emerald-300 w-3/4 mx-auto"></div>
-                  <p className="text-xs text-slate-500 mt-1 font-handwriting italic">{item.name}</p>
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-slate-600 font-handwriting italic leading-tight">
+                    {item.name}
+                  </p>
                 </div>
               </div>
             ))}
-            {/* Empty slots for incomplete pages */}
+            
+            {/* Empty slots with decorative pattern */}
             {getCurrentPageItems().length < itemsPerPage && 
               Array.from({ length: itemsPerPage - getCurrentPageItems().length }).map((_, i) => (
-                <div key={`empty-${i}`} className="bg-emerald-50/30 rounded border-2 border-dashed border-emerald-200"></div>
+                <div 
+                  key={`empty-${i}`} 
+                  className="border-2 border-dashed border-emerald-200 rounded-sm bg-white/30 backdrop-blur-sm"
+                  style={{
+                    backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(16, 185, 129, 0.05) 10px, rgba(16, 185, 129, 0.05) 20px)'
+                  }}
+                />
               ))
             }
           </div>
 
           {/* Page Navigation */}
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-12 flex items-center justify-between pt-6 border-t border-emerald-200/50">
             <button
               onClick={prevPage}
-              disabled={currentPage === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-800 text-white rounded-lg font-semibold disabled:bg-emerald-300 disabled:cursor-not-allowed hover:bg-emerald-900 transition-colors shadow-md"
+              disabled={currentPage === 0 || isFlipping}
+              className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-700 to-emerald-800 text-white rounded-lg font-semibold disabled:from-emerald-300 disabled:to-emerald-300 disabled:cursor-not-allowed hover:from-emerald-800 hover:to-emerald-900 transition-all shadow-lg disabled:shadow-none transform hover:scale-105 disabled:scale-100"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-hover:-translate-x-1" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
               Anterior
             </button>
 
             <div className="text-center">
-              <p className="text-sm text-emerald-900 font-semibold">
-                Página {currentPage + 1} de {totalPages}
-              </p>
-              <div className="flex gap-1 mt-2 justify-center">
+              <div className="inline-block px-6 py-2 bg-white/60 backdrop-blur-sm rounded-full shadow-md border border-emerald-200">
+                <p className="text-sm text-emerald-900 font-bold">
+                  {currentPage + 1} / {totalPages}
+                </p>
+              </div>
+              <div className="flex gap-2 mt-3 justify-center">
                 {Array.from({ length: totalPages }).map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setCurrentPage(i)}
-                    className={`w-2 h-2 rounded-full transition-all ${
-                      i === currentPage ? 'bg-emerald-800 w-6' : 'bg-emerald-300 hover:bg-emerald-600'
+                    onClick={() => {
+                      if (!isFlipping && i !== currentPage) {
+                        setIsFlipping(true);
+                        setTimeout(() => {
+                          setCurrentPage(i);
+                          setIsFlipping(false);
+                        }, 600);
+                      }
+                    }}
+                    disabled={isFlipping}
+                    className={`h-2 rounded-full transition-all ${
+                      i === currentPage 
+                        ? 'bg-emerald-800 w-8 shadow-lg' 
+                        : 'bg-emerald-300 w-2 hover:bg-emerald-600 hover:w-4'
                     }`}
                     aria-label={`Ir para página ${i + 1}`}
                   />
@@ -91,20 +249,24 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
 
             <button
               onClick={nextPage}
-              disabled={currentPage === totalPages - 1}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-800 text-white rounded-lg font-semibold disabled:bg-emerald-300 disabled:cursor-not-allowed hover:bg-emerald-900 transition-colors shadow-md"
+              disabled={currentPage === totalPages - 1 || isFlipping}
+              className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-700 to-emerald-800 text-white rounded-lg font-semibold disabled:from-emerald-300 disabled:to-emerald-300 disabled:cursor-not-allowed hover:from-emerald-800 hover:to-emerald-900 transition-all shadow-lg disabled:shadow-none transform hover:scale-105 disabled:scale-100"
             >
               Próxima
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-hover:translate-x-1" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
             </button>
           </div>
         </div>
 
-        {/* Decorative corners */}
-        <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-emerald-400 rounded-tr-lg opacity-50"></div>
-        <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-emerald-400 rounded-br-lg opacity-50"></div>
+        {/* Right page edge shadow */}
+        <div 
+          className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to right, transparent, rgba(0,0,0,0.1))',
+          }}
+        />
       </div>
     </div>
   );
