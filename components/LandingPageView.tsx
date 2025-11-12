@@ -6,7 +6,7 @@ import { useTranslation } from '../App';
 const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [isFlipping, setIsFlipping] = useState(false);
-  const itemsPerPage = 4; // 2x2 grid per page
+  const itemsPerPage = 6; // 3x2 grid per page
   const totalPages = Math.ceil(items.length / itemsPerPage);
 
   const getCurrentPageItems = () => {
@@ -127,13 +127,13 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
           ))}
         </div>
 
-        {/* Book Pages */}
+        {/* Book Pages - Fixed height with proper spacing */}
         <div 
-          className={`ml-16 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 p-10 paper-texture ${
+          className={`ml-16 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 p-8 paper-texture ${
             isFlipping ? (currentPage > 0 ? 'page-flipping-backward' : 'page-flipping-forward') : ''
           }`}
           style={{
-            minHeight: '600px',
+            height: '850px',
             backgroundImage: `
               radial-gradient(circle at 20% 30%, rgba(245, 158, 11, 0.05) 0%, transparent 50%),
               radial-gradient(circle at 80% 70%, rgba(234, 179, 8, 0.05) 0%, transparent 50%)
@@ -149,25 +149,25 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
           />
           
           {/* Page number decoration */}
-          <div className="absolute top-6 left-20 text-emerald-800 opacity-40 font-serif text-sm">
+          <div className="text-center pt-2 pb-4 text-emerald-800 opacity-40 font-serif text-sm">
             ~ Página {currentPage + 1} ~
           </div>
           
-          {/* Photos Grid */}
-          <div className="grid grid-cols-2 gap-8 pt-8">
+          {/* Photos Grid - Fixed height for consistency - 3x2 layout */}
+          <div className="grid grid-cols-3 gap-6 min-h-[580px]">
             {getCurrentPageItems().map((item, index) => (
               <div 
                 key={item.id} 
-                className="photo-polaroid p-4 rounded-sm transition-all duration-300 cursor-pointer"
+                className="photo-polaroid p-3 rounded-sm transition-all duration-300 cursor-pointer h-fit"
                 style={{
-                  transform: `rotate(${index % 2 === 0 ? -1 : 1}deg)`,
+                  transform: `rotate(${[-1.5, 1, -1, 1.5, -1, 1][index % 6]}deg)`,
                 }}
               >
                 {item.type === 'image' ? (
                   <img 
                     src={item.dataUrl} 
                     alt={item.name} 
-                    className="w-full h-64 object-cover rounded-sm shadow-inner"
+                    className="w-full h-56 object-cover rounded-sm shadow-inner"
                     style={{ 
                       border: '1px solid rgba(0,0,0,0.1)',
                       filter: 'contrast(1.05) brightness(0.98)'
@@ -177,11 +177,11 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
                   <video 
                     src={item.dataUrl} 
                     controls 
-                    className="w-full h-64 object-cover rounded-sm shadow-inner"
+                    className="w-full h-56 object-cover rounded-sm shadow-inner"
                     style={{ border: '1px solid rgba(0,0,0,0.1)' }}
                   />
                 )}
-                <div className="mt-3 text-center">
+                <div className="mt-2 text-center">
                   <p className="text-xs text-slate-600 font-handwriting italic leading-tight">
                     {item.name}
                   </p>
@@ -189,12 +189,12 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
               </div>
             ))}
             
-            {/* Empty slots with decorative pattern */}
+            {/* Empty slots with decorative pattern - Fixed height */}
             {getCurrentPageItems().length < itemsPerPage && 
               Array.from({ length: itemsPerPage - getCurrentPageItems().length }).map((_, i) => (
                 <div 
                   key={`empty-${i}`} 
-                  className="border-2 border-dashed border-emerald-200 rounded-sm bg-white/30 backdrop-blur-sm"
+                  className="border-2 border-dashed border-emerald-200 rounded-sm bg-white/30 backdrop-blur-sm h-72"
                   style={{
                     backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(16, 185, 129, 0.05) 10px, rgba(16, 185, 129, 0.05) 20px)'
                   }}
