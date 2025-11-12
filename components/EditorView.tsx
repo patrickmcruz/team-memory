@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import QRCode from 'qrcode';
 import type { PageData, ColleagueMessage, MediaItem } from '../types';
 import LandingPageView from './LandingPageView';
 import { PlusIcon, TrashIcon, UploadIcon, DownloadIcon, LinkIcon, LoadingIcon, SettingsIcon, MagicIcon, SaveIcon, ChevronDownIcon, EyeIcon, ShareIcon } from './icons';
@@ -53,42 +54,23 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
     context?.clearRect(0, 0, canvas.width, canvas.height);
     setIsQrRendered(false);
 
-    let attempts = 0;
-    const maxAttempts = 50; 
-
-    const renderQrCode = () => {
-      if (window.QRCode) {
-        window.QRCode.toCanvas(
-          canvas,
-          url,
-          {
-            width: 256,
-            margin: 2,
-            color: {
-              dark: '#1e293b',
-              light: '#FFFFFF',
-            },
-            errorCorrectionLevel: 'H'
+    (async () => {
+      try {
+        await QRCode.toCanvas(canvas, url, {
+          width: 256,
+          margin: 2,
+          color: {
+            dark: '#1e293b',
+            light: '#FFFFFF',
           },
-          (error: Error | null) => {
-            if (error) {
-              console.error("QR Code generation error: ", error);
-              setIsQrRendered(false);
-            } else {
-              setIsQrRendered(true);
-            }
-          }
-        );
-      } else if (attempts < maxAttempts) {
-        attempts++;
-        setTimeout(renderQrCode, 100);
-      } else {
-        console.error("QRCode library failed to load in time.");
+          errorCorrectionLevel: 'H',
+        });
+        setIsQrRendered(true);
+      } catch (error) {
+        console.error('QR Code generation error: ', error);
         setIsQrRendered(false);
       }
-    };
-
-    renderQrCode();
+    })();
   }, [url]);
 
   const handleDownload = () => {
@@ -126,14 +108,22 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
       <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
         {t('qrCodeExplanation')}
       </p>
-      <div className="flex justify-center items-center p-4 bg-slate-100 rounded-lg shadow-inner border border-slate-200 min-h-[288px] w-[288px] mx-auto">
-        {isQrRendered ? (
-            <canvas ref={qrCanvasRef} className="rounded-md transition-opacity duration-500 opacity-100"></canvas>
-        ) : (
-            <div className="flex flex-col items-center" role="status" aria-live="polite">
-                <LoadingIcon />
-                <p className="mt-2 text-sm text-slate-500">{t('generatingQRCode')}</p>
-            </div>
+      <div className="flex justify-center items-center p-4 bg-slate-100 rounded-lg shadow-inner border border-slate-200 min-h-[288px] w-[288px] mx-auto relative">
+        {/* Canvas is always rendered so the ref exists for QR generation */}
+        <canvas
+          ref={qrCanvasRef}
+          width={256}
+          height={256}
+          className={`rounded-md transition-opacity duration-500 ${isQrRendered ? 'opacity-100' : 'opacity-0'}`}
+          aria-hidden={!isQrRendered}
+        />
+
+        {/* Loading overlay shown while QR is being generated */}
+        {!isQrRendered && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center" role="status" aria-live="polite">
+              <LoadingIcon />
+              <p className="mt-2 text-sm text-slate-500">{t('generatingQRCode')}</p>
+          </div>
         )}
       </div>
       
