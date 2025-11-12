@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import QRCode from 'qrcode';
 import type { PageData, ColleagueMessage, MediaItem } from '../types';
 import LandingPageView from './LandingPageView';
+import AdminPanel from './AdminPanel';
 import { PlusIcon, TrashIcon, UploadIcon, DownloadIcon, LinkIcon, LoadingIcon, SettingsIcon, MagicIcon, SaveIcon, ChevronDownIcon, EyeIcon, ShareIcon } from './icons';
 import { useTranslation } from '../App';
 import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
@@ -38,7 +39,9 @@ const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; d
 };
 
 
-const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: string, type: 'success' | 'error'}) => void }> = ({ url, setToast }) => {
+type QRReadyCallback = (dataUrl: string) => void;
+
+const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: string, type: 'success' | 'error'}) => void; onQrReady?: QRReadyCallback }> = ({ url, setToast, onQrReady }) => {
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const { t } = useTranslation();
   const [isQrRendered, setIsQrRendered] = useState(false);
@@ -66,6 +69,13 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
           errorCorrectionLevel: 'H',
         });
         setIsQrRendered(true);
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          if (onQrReady) onQrReady(dataUrl);
+        } catch (err) {
+          // non-fatal if canvas.toDataURL fails (CORS or other)
+          console.warn('Could not extract QR data URL', err);
+        }
       } catch (error) {
         console.error('QR Code generation error: ', error);
         setIsQrRendered(false);
@@ -79,6 +89,7 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
       link.download = 'memory-page-qr-code.png';
       link.href = qrCanvasRef.current.toDataURL('image/png');
       link.click();
+      setToast({ message: t('qrCodeDownloaded'), type: 'success' });
     }
   };
   
@@ -127,7 +138,7 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
         )}
       </div>
       
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <button
           onClick={handleDownload}
           disabled={!isQrRendered}
@@ -144,6 +155,14 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
           <LinkIcon />
           {t('copySharableLink')}
         </button>
+
+        <button
+          onClick={() => url && window.open(url, '_blank')}
+          className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-all flex items-center justify-center gap-2 text-base transform hover:scale-105 active:scale-100"
+        >
+          <EyeIcon />
+          {t('viewPage')}
+        </button>
       </div>
     </div>
   );
@@ -154,11 +173,16 @@ type ToastMessage = { message: string; type: 'success' | 'error' };
 const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
   const [data, setData] = useState<PageData>({
     recipientName: '',
+    recipientGender: 'female',
     mainMessage: '',
     colleagueMessages: [],
     mediaItems: [],
   });
   const [savedData, setSavedData] = useState<PageData | null>(null);
+  const [savedPages, setSavedPages] = useState<Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string }>>([]);
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [teamName, setTeamName] = useState<string>('');
   const [mediaUploading, setMediaUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -202,11 +226,14 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
       const newMediaItems: MediaItem[] = [];
 
       for (const file of files as File[]) {
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
-            setToast({ message: `File ${file.name} is too large (max 5MB).`, type: 'error' });
+        const type = file.type.startsWith('image/') ? 'image' : 'video';
+        const maxSize = type === 'image' ? 5 * 1024 * 1024 : 100 * 1024 * 1024; // 5MB for images, 100MB for videos
+        const maxSizeLabel = type === 'image' ? '5MB' : '100MB';
+        
+        if (file.size > maxSize) {
+            setToast({ message: `File ${file.name} is too large (max ${maxSizeLabel}).`, type: 'error' });
             continue;
         }
-        const type = file.type.startsWith('image/') ? 'image' : 'video';
         const dataUrl = await fileToBase64(file);
         newMediaItems.push({ id: `${Date.now()}-${file.name}`, type, dataUrl, name: file.name });
       }
@@ -259,9 +286,123 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     }
   };
 
-  const handleSave = () => {
+  // Safe base64 encoder to support Unicode
+  const safeBase64Encode = (str: string) => {
+    return btoa(unescape(encodeURIComponent(str)));
+  };
+
+  const STORAGE_KEY = 'team-memory:savedPages';
+
+  const loadSavedPages = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw) as Array<any>;
+    } catch (e) {
+      console.warn('Failed to load saved pages', e);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    const pages = loadSavedPages();
+    setSavedPages(pages);
+    try {
+      const tn = localStorage.getItem('team-memory:teamName') || '';
+      setTeamName(tn);
+    } catch (e) {
+      /* ignore */
+    }
+  }, [loadSavedPages]);
+
+  const persistSavedPages = (pages: Array<any>) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pages));
+    } catch (e) {
+      console.warn('Failed to persist saved pages', e);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('team-memory:teamName', teamName || '');
+    } catch (e) {
+      console.warn('Failed to persist teamName', e);
+    }
+  }, [teamName]);
+
+  const handleSave = async () => {
     setSavedData(data);
     setActiveTab('share');
+
+    // prepare entry
+    const serialized = (() => {
+      try { return safeBase64Encode(JSON.stringify(data)); } catch { return null; }
+    })();
+
+    if (!serialized) {
+      setToast({ message: 'Failed to serialize page', type: 'error' });
+      return;
+    }
+
+    const url = `${window.location.origin}${window.location.pathname}#/view/${serialized}`;
+    
+    let next: Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string }>;
+    let currentId: string;
+
+    if (editingPageId) {
+      // Atualizando página existente
+      const updatedAt = new Date().toISOString();
+      next = savedPages.map(p => 
+        p.id === editingPageId 
+          ? { ...p, data, serialized, url, updatedAt, qrDataUrl: null }
+          : p
+      );
+      currentId = editingPageId;
+      setToast({ message: t('pageUpdatedSuccess'), type: 'success' });
+    } else {
+      // Criando nova página
+      const id = Date.now().toString();
+      const createdAt = new Date().toISOString();
+      const entry = { id, data, serialized, url, qrDataUrl: null as string | null, createdAt };
+      next = [entry, ...savedPages];
+      currentId = id;
+      setToast({ message: t('pageSavedSuccess'), type: 'success' });
+    }
+
+    setSavedPages(next);
+    persistSavedPages(next);
+
+    // Try to pre-generate QR data URL using the library (fallback will be handled by QRCodeDisplay)
+    try {
+      const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2, errorCorrectionLevel: 'H' });
+      // update entry with qrDataUrl
+      const updated = next.map(p => p.id === currentId ? { ...p, qrDataUrl } : p);
+      setSavedPages(updated);
+      persistSavedPages(updated);
+    } catch (e) {
+      // ignore — QR will be generated in the canvas and stored via onQrReady
+      console.warn('Pre-generate QR failed', e);
+    }
+  };
+
+  const handleEditPage = (pageData: PageData, pageId: string) => {
+    setData(pageData);
+    setEditingPageId(pageId);
+    setActiveTab('preview');
+    setToast({ message: t('pageLoadedForEdit'), type: 'success' });
+  };
+
+  const handleNewPage = () => {
+    setData({
+      recipientName: '',
+      recipientGender: 'female',
+      mainMessage: '',
+      colleagueMessages: [],
+      mediaItems: [],
+    });
+    setEditingPageId(null);
+    setActiveTab('preview');
   };
 
   const hasContent = useMemo(() => {
@@ -272,7 +413,7 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
   const serializedSavedData = useMemo(() => {
     if(!savedData) return null;
     try {
-      return btoa(JSON.stringify(savedData));
+      return safeBase64Encode(JSON.stringify(savedData));
     } catch (e) {
       return null;
     }
@@ -300,13 +441,17 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
             <p className="text-slate-500 text-sm mt-1">{t('appSubtitle')}</p>
           </div>
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleSave}
-              disabled={!hasContent}
-              className="flex items-center gap-2 rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-100"
-            >
-              <SaveIcon />
-              <span>{t('saveAndGenerate')}</span>
+            {editingPageId && (
+              <button 
+                onClick={handleNewPage} 
+                className="flex items-center gap-2 rounded-md border border-indigo-600 bg-white text-indigo-600 py-2 px-3 text-sm hover:bg-indigo-50 transition-all"
+              >
+                <PlusIcon />
+                <span>{t('newPage')}</span>
+              </button>
+            )}
+            <button onClick={() => setAdminOpen(true)} title={t('admin')} className="p-2 rounded-md border border-slate-300 hover:bg-slate-100">
+              {t('admin')}
             </button>
             <div className="relative">
               <button onClick={() => setSettingsOpen(!settingsOpen)} className="flex items-center gap-2 rounded-md border border-slate-300 py-2 px-3 text-sm text-slate-600 hover:bg-slate-100 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
@@ -352,6 +497,32 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
               <div>
                 <label htmlFor="recipientName" className="block text-sm font-medium text-slate-700">{t('recipientName')}</label>
                 <input type="text" id="recipientName" value={data.recipientName} onChange={e => updateData('recipientName', e.target.value)} className={formInputStyle} placeholder={t('recipientNamePlaceholder')} />
+              </div>
+
+              <div>
+                <label htmlFor="recipientGender" className="block text-sm font-medium text-slate-700">{t('recipientGender')}</label>
+                <select
+                  id="recipientGender"
+                  value={data.recipientGender || 'female'}
+                  onChange={e => updateData('recipientGender', e.target.value as 'male' | 'female')}
+                  className={formSelectStyle}
+                >
+                  <option value="male">{t('male')}</option>
+                  <option value="female">{t('female')}</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="teamNameInput" className="block text-sm font-medium text-slate-700">{t('teamNameSetting')}</label>
+                <input
+                  type="text"
+                  id="teamNameInput"
+                  value={teamName}
+                  onChange={e => setTeamName(e.target.value)}
+                  className={formInputStyle}
+                  placeholder={t('teamNamePlaceholder')}
+                />
+                <p className="text-xs text-slate-500 mt-1">{t('teamNameSettingDescription')}</p>
               </div>
 
               <div>
@@ -417,6 +588,17 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
                 </div>
               </div>
             </CollapsibleSection>
+
+            <div className="mt-6">
+              <button
+                onClick={handleSave}
+                disabled={!hasContent}
+                className="w-full flex items-center justify-center gap-2 rounded-lg border border-transparent bg-indigo-600 px-6 py-4 text-lg font-bold text-white shadow-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-100"
+              >
+                <SaveIcon />
+                <span>{t('saveAndGenerate')}</span>
+              </button>
+            </div>
           </div>
 
           <div className="sticky top-24">
@@ -432,12 +614,34 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
                         </div>
                     </div>
                 ) : (
-                    <QRCodeDisplay url={shareableUrl} setToast={setToast} />
+                    <>
+                      <QRCodeDisplay url={shareableUrl} setToast={setToast} onQrReady={(dataUrl) => {
+                      // store generated QR data URL for the current saved page
+                      try {
+                        if (!shareableUrl) return;
+                        const updated = savedPages.map(p => p.url === shareableUrl ? { ...p, qrDataUrl: dataUrl } : p);
+                        setSavedPages(updated);
+                        persistSavedPages(updated);
+                      } catch (e) {
+                        console.warn('Failed to save QR data to savedPages', e);
+                      }
+                      }} />
+
+                    </>
                 )}
             </div>
           </div>
         </div>
       </main>
+      <AdminPanel
+        open={adminOpen}
+        onClose={() => setAdminOpen(false)}
+        savedPages={savedPages}
+        setSavedPages={setSavedPages}
+        persistSavedPages={persistSavedPages}
+        setToast={setToast}
+        onEditPage={handleEditPage}
+      />
     </div>
   );
 };

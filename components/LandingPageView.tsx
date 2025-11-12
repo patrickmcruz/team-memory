@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PageData } from '../types';
 import { QuoteIcon } from './icons';
 import { useTranslation } from '../App';
 
 const LandingPageView: React.FC<{ data: PageData }> = ({ data }) => {
   const { t } = useTranslation();
+  const [teamName, setTeamName] = useState<string>('');
+  
+  useEffect(() => {
+    try {
+      const tn = localStorage.getItem('team-memory:teamName') || '';
+      setTeamName(tn);
+    } catch (e) {
+      /* ignore */
+    }
+  }, []);
   
   const hasMessages = data.colleagueMessages && data.colleagueMessages.filter(m => m.text.trim() || m.author.trim()).length > 0;
   const hasMedia = data.mediaItems && data.mediaItems.length > 0;
@@ -42,7 +52,7 @@ const LandingPageView: React.FC<{ data: PageData }> = ({ data }) => {
         </div>
         <div className="relative z-10">
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight drop-shadow-lg">
-              {t('landingHeroTitle')}
+              {data.recipientGender === 'female' ? t('landingHeroTitleFemale') : t('landingHeroTitleMale')}
             </h1>
             <h2 className="text-5xl md:text-7xl font-bold mt-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-indigo-100 drop-shadow-lg">
               {data.recipientName || t('landingDefaultRecipient')}
@@ -98,7 +108,7 @@ const LandingPageView: React.FC<{ data: PageData }> = ({ data }) => {
 
       <footer className="text-center py-16 mt-20 bg-gradient-to-t from-slate-100 to-white">
         <p className="text-slate-500 text-lg">{t('footerMessage')}</p>
-        <p className="text-slate-700 font-semibold mt-2 text-xl">{t('footerSignature')}</p>
+        <p className="text-slate-700 font-semibold mt-2 text-xl">{teamName || t('footerSignature')}</p>
       </footer>
     </div>
   );

@@ -14,6 +14,7 @@ export interface MediaItem {
 
 export interface PageData {
   recipientName: string;
+  recipientGender?: 'male' | 'female';
   mainMessage: string;
   colleagueMessages: ColleagueMessage[];
   mediaItems: MediaItem[];
