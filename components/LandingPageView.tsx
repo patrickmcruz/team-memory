@@ -20,8 +20,8 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
       setIsFlipping(true);
       setTimeout(() => {
         setCurrentPage(currentPage + 1);
-        setIsFlipping(false);
-      }, 600);
+        setTimeout(() => setIsFlipping(false), 100);
+      }, 1000);
     }
   };
 
@@ -30,32 +30,153 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
       setIsFlipping(true);
       setTimeout(() => {
         setCurrentPage(currentPage - 1);
-        setIsFlipping(false);
-      }, 600);
+        setTimeout(() => setIsFlipping(false), 100);
+      }, 1000);
     }
   };
 
   return (
     <div className="max-w-6xl mx-auto px-4">
       <style>{`
-        @keyframes page-flip-forward {
-          0% { transform: rotateY(0deg); }
-          50% { transform: rotateY(-90deg); }
-          100% { transform: rotateY(0deg); }
+        /* Advanced 3D page flip animation - realistic book page turn */
+        @keyframes flip-page-forward {
+          0% {
+            transform: perspective(2500px) rotateY(0deg);
+            transform-origin: left center;
+            box-shadow: 
+              -2px 0 5px rgba(0,0,0,0.1),
+              2px 0 10px rgba(0,0,0,0.05);
+            z-index: 2;
+          }
+          25% {
+            transform: perspective(2500px) rotateY(-25deg);
+            box-shadow: 
+              -5px 0 15px rgba(0,0,0,0.15),
+              10px 5px 30px rgba(0,0,0,0.25);
+            z-index: 3;
+          }
+          50% {
+            transform: perspective(2500px) rotateY(-90deg);
+            box-shadow: 
+              0 0 20px rgba(0,0,0,0.3),
+              15px 10px 40px rgba(0,0,0,0.35);
+            z-index: 3;
+          }
+          75% {
+            transform: perspective(2500px) rotateY(-155deg);
+            box-shadow: 
+              5px 0 15px rgba(0,0,0,0.15),
+              10px 5px 30px rgba(0,0,0,0.25);
+            z-index: 3;
+          }
+          100% {
+            transform: perspective(2500px) rotateY(-180deg);
+            transform-origin: left center;
+            box-shadow: 
+              2px 0 5px rgba(0,0,0,0.1),
+              -2px 0 10px rgba(0,0,0,0.05);
+            z-index: 1;
+          }
         }
         
-        @keyframes page-flip-backward {
-          0% { transform: rotateY(0deg); }
-          50% { transform: rotateY(90deg); }
-          100% { transform: rotateY(0deg); }
+        @keyframes flip-page-backward {
+          0% {
+            transform: perspective(2500px) rotateY(-180deg);
+            transform-origin: left center;
+            box-shadow: 
+              2px 0 5px rgba(0,0,0,0.1),
+              -2px 0 10px rgba(0,0,0,0.05);
+            z-index: 1;
+          }
+          25% {
+            transform: perspective(2500px) rotateY(-155deg);
+            box-shadow: 
+              5px 0 15px rgba(0,0,0,0.15),
+              10px 5px 30px rgba(0,0,0,0.25);
+            z-index: 3;
+          }
+          50% {
+            transform: perspective(2500px) rotateY(-90deg);
+            box-shadow: 
+              0 0 20px rgba(0,0,0,0.3),
+              15px 10px 40px rgba(0,0,0,0.35);
+            z-index: 3;
+          }
+          75% {
+            transform: perspective(2500px) rotateY(-25deg);
+            box-shadow: 
+              -5px 0 15px rgba(0,0,0,0.15),
+              10px 5px 30px rgba(0,0,0,0.25);
+            z-index: 3;
+          }
+          100% {
+            transform: perspective(2500px) rotateY(0deg);
+            transform-origin: left center;
+            box-shadow: 
+              -2px 0 5px rgba(0,0,0,0.1),
+              2px 0 10px rgba(0,0,0,0.05);
+            z-index: 2;
+          }
         }
         
-        .page-flipping-forward {
-          animation: page-flip-forward 0.6s ease-in-out;
+        /* Page gradient during flip - simulates light hitting the page */
+        @keyframes page-lighting-forward {
+          0% {
+            background: linear-gradient(to right, 
+              rgba(0,0,0,0) 0%, 
+              rgba(0,0,0,0) 100%);
+          }
+          25% {
+            background: linear-gradient(to right, 
+              rgba(0,0,0,0.05) 0%, 
+              rgba(255,255,255,0.1) 50%, 
+              rgba(0,0,0,0) 100%);
+          }
+          50% {
+            background: linear-gradient(to right, 
+              rgba(0,0,0,0.1) 0%, 
+              rgba(255,255,255,0.2) 50%, 
+              rgba(0,0,0,0.05) 100%);
+          }
+          75% {
+            background: linear-gradient(to right, 
+              rgba(0,0,0,0) 0%, 
+              rgba(255,255,255,0.1) 50%, 
+              rgba(0,0,0,0.05) 100%);
+          }
+          100% {
+            background: linear-gradient(to right, 
+              rgba(0,0,0,0) 0%, 
+              rgba(0,0,0,0) 100%);
+          }
         }
         
-        .page-flipping-backward {
-          animation: page-flip-backward 0.6s ease-in-out;
+        .page-flip-forward {
+          animation: 
+            flip-page-forward 1s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+          transform-style: preserve-3d;
+          backface-visibility: hidden;
+        }
+        
+        .page-flip-backward {
+          animation: 
+            flip-page-backward 1s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+          transform-style: preserve-3d;
+          backface-visibility: hidden;
+        }
+        
+        /* Overlay for lighting effect */
+        .page-flip-forward::before,
+        .page-flip-backward::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          pointer-events: none;
+          animation: page-lighting-forward 1s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+          z-index: 10;
         }
         
         /* Paper texture */
@@ -65,41 +186,47 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
               0deg,
               transparent,
               transparent 2px,
-              rgba(0,0,0,0.03) 2px,
-              rgba(0,0,0,0.03) 4px
-            );
+              rgba(0,0,0,0.02) 2px,
+              rgba(0,0,0,0.02) 4px
+            ),
+            radial-gradient(circle at 30% 40%, rgba(245, 158, 11, 0.03) 0%, transparent 60%),
+            radial-gradient(circle at 70% 80%, rgba(234, 179, 8, 0.03) 0%, transparent 60%);
         }
         
         /* Book shadow effect */
         .book-shadow {
           box-shadow: 
-            0 20px 60px rgba(0,0,0,0.3),
+            0 25px 80px rgba(0,0,0,0.35),
+            0 10px 40px rgba(0,0,0,0.25),
             inset 0 0 0 1px rgba(255,255,255,0.2),
-            inset 40px 0 80px rgba(0,0,0,0.1);
+            inset 60px 0 120px rgba(0,0,0,0.08);
         }
         
         /* Photo polaroid effect */
         .photo-polaroid {
-          background: linear-gradient(to bottom, #fff 0%, #fff 85%, #f5f5f5 85%, #f5f5f5 100%);
+          background: linear-gradient(to bottom, #fff 0%, #fff 82%, #fafafa 82%, #fafafa 100%);
           box-shadow: 
-            0 4px 8px rgba(0,0,0,0.15),
-            0 0 0 1px rgba(0,0,0,0.05);
+            0 6px 12px rgba(0,0,0,0.12),
+            0 2px 4px rgba(0,0,0,0.08),
+            0 0 0 1px rgba(0,0,0,0.04);
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         
         .photo-polaroid:hover {
-          transform: translateY(-4px) rotate(2deg);
+          transform: translateY(-8px) rotate(3deg) scale(1.02);
           box-shadow: 
-            0 12px 24px rgba(0,0,0,0.25),
-            0 0 0 1px rgba(0,0,0,0.05);
+            0 20px 40px rgba(0,0,0,0.2),
+            0 8px 16px rgba(0,0,0,0.15),
+            0 0 0 1px rgba(0,0,0,0.04);
         }
       `}</style>
 
       {/* Album Book with 3D effect */}
       <div 
-        className="relative book-shadow rounded-r-xl overflow-hidden"
+        className="relative book-shadow rounded-r-xl overflow-visible"
         style={{ 
-          perspective: '3000px',
-          transformStyle: 'preserve-3d'
+          perspective: '2500px',
+          transformStyle: 'preserve-3d',
         }}
       >
         {/* Book Cover - Left Side (Spine) */}
@@ -127,13 +254,15 @@ const PhotoAlbum: React.FC<{ items: any[] }> = ({ items }) => {
           ))}
         </div>
 
-        {/* Book Pages - Fixed height with proper spacing */}
+        {/* Book Pages - Fixed height with proper spacing and flip effect */}
         <div 
-          className={`ml-16 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 p-8 paper-texture ${
-            isFlipping ? (currentPage > 0 ? 'page-flipping-backward' : 'page-flipping-forward') : ''
+          className={`ml-16 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-50 p-8 paper-texture relative ${
+            isFlipping ? (currentPage > 0 ? 'page-flip-backward' : 'page-flip-forward') : ''
           }`}
           style={{
             height: '850px',
+            transformOrigin: 'left center',
+            transformStyle: 'preserve-3d',
             backgroundImage: `
               radial-gradient(circle at 20% 30%, rgba(245, 158, 11, 0.05) 0%, transparent 50%),
               radial-gradient(circle at 80% 70%, rgba(234, 179, 8, 0.05) 0%, transparent 50%)
