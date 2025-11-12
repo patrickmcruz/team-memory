@@ -85,6 +85,12 @@ const translations = {
     "created": "Criada",
     "updated": "Atualizada",
     "viewPage": "Ver Página",
+    "dangerZone": "Zona de Perigo",
+    "clearAllWarning": "Esta ação irá apagar TODOS os dados salvos incluindo páginas, configurações e mapeamentos de URL. Esta ação não pode ser desfeita!",
+    "confirmClearAll": "Tem certeza que deseja apagar TODOS os dados? Esta ação é IRREVERSÍVEL!",
+    "allDataCleared": "Todos os dados foram apagados com sucesso!",
+    "clearDataError": "Erro ao apagar dados. Tente novamente.",
+    "clearAllData": "Apagar Todos os Dados",
   },
   'en-US': {
     "loadingMemories": "Loading Memories...",
@@ -166,6 +172,12 @@ const translations = {
     "created": "Created",
     "updated": "Updated",
     "viewPage": "View Page",
+    "dangerZone": "Danger Zone",
+    "clearAllWarning": "This action will DELETE ALL saved data including pages, settings, and URL mappings. This action cannot be undone!",
+    "confirmClearAll": "Are you sure you want to delete ALL data? This action is IRREVERSIBLE!",
+    "allDataCleared": "All data has been cleared successfully!",
+    "clearDataError": "Error clearing data. Please try again.",
+    "clearAllData": "Clear All Data",
   }
 };
 
@@ -230,21 +242,58 @@ const AppContent: React.FC = () => {
           
           let parsedData: PageData | null = null;
           
-          // Try short ID first (8 characters)
-          if (hashData.length === 8) {
+          // Try short ID first (8 characters, only letters and numbers)
+          if (hashData.length === 8 && /^[a-zA-Z0-9]+$/.test(hashData)) {
             try {
-              const urlMap = JSON.parse(localStorage.getItem('team-memory:urlMap') || '{}');
-              parsedData = urlMap[hashData] || null;
+              const urlMapRaw = localStorage.getItem('team-memory:urlMap');
+              console.log('🔍 Short ID detected:', hashData);
+              console.log('📦 URL Map from localStorage:', urlMapRaw ? 'exists' : 'null');
+              
+              if (urlMapRaw) {
+                const urlMap = JSON.parse(urlMapRaw);
+                const pageId = urlMap[hashData]; // shortId → pageId
+                
+                console.log('� Mapped to pageId:', pageId);
+                
+                if (pageId) {
+                  // Buscar dados completos no savedPages
+                  const savedPagesRaw = localStorage.getItem('team-memory:savedPages');
+                  console.log('📚 savedPages exists:', savedPagesRaw ? 'yes' : 'no');
+                  
+                  if (savedPagesRaw) {
+                    const savedPages = JSON.parse(savedPagesRaw);
+                    console.log('📊 Total pages in localStorage:', savedPages.length);
+                    console.log('🔍 Available page IDs:', savedPages.map((p: any) => p.id));
+                    
+                    const page = savedPages.find((p: any) => p.id === pageId);
+                    
+                    if (page && page.data) {
+                      parsedData = page.data;
+                      console.log('✅ Page data loaded successfully!');
+                    } else {
+                      console.warn('⚠️ Page not found in savedPages:', pageId);
+                      console.log('Available pages:', savedPages.map((p: any) => ({ id: p.id, shortId: p.shortId })));
+                    }
+                  } else {
+                    console.error('❌ savedPages not found in localStorage');
+                  }
+                } else {
+                  console.warn('⚠️ Short ID not mapped:', hashData);
+                }
+              } else {
+                console.error('❌ URL map is empty in localStorage');
+              }
             } catch (e) {
               console.warn('Failed to load from short URL', e);
             }
           }
           
           // Fallback to base64 decode (for backward compatibility or long URLs)
-          if (!parsedData) {
+          if (!parsedData && hashData.length > 8) {
             try {
               const jsonData = decodeURIComponent(escape(atob(hashData)));
               parsedData = JSON.parse(jsonData);
+              console.log('Loaded from base64 fallback');
             } catch (e) {
               console.warn('Failed to decode base64 data', e);
             }
@@ -254,6 +303,7 @@ const AppContent: React.FC = () => {
             setPageData(parsedData);
             setView('viewer');
           } else {
+            console.error('No page data found for hash:', hashData);
             throw new Error('Could not load page data');
           }
         } catch (e) {

@@ -219,6 +219,53 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     updateData('colleagueMessages', data.colleagueMessages.filter(msg => msg.id !== id));
   };
 
+  // Compress image before converting to base64
+  const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Resize maintaining aspect ratio
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Convert to JPEG with quality compression
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          console.log('🖼️ Image compressed:', {
+            original: `${(file.size / 1024).toFixed(0)}KB`,
+            compressed: `${(compressedDataUrl.length * 0.75 / 1024).toFixed(0)}KB`,
+            reduction: `${(100 - (compressedDataUrl.length * 0.75 / file.size) * 100).toFixed(0)}%`
+          });
+          
+          resolve(compressedDataUrl);
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
       setMediaUploading(true);
@@ -237,7 +284,16 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
 
         try {
           setToast({ message: `${t('uploading')} ${file.name}...`, type: 'success' });
-          const dataUrl = await fileToBase64(file);
+          
+          let dataUrl: string;
+          if (type === 'image') {
+            // Compress images to save storage
+            dataUrl = await compressImage(file);
+          } else {
+            // Videos are not compressed (already efficient)
+            dataUrl = await fileToBase64(file);
+          }
+          
           newMediaItems.push({ id: `${Date.now()}-${file.name}`, type, dataUrl, name: file.name });
         } catch (error) {
           console.error('Error uploading file:', file.name, error);
@@ -315,20 +371,43 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
   const STORAGE_KEY = 'team-memory:savedPages';
   const URL_MAP_KEY = 'team-memory:urlMap';
 
-  const saveUrlMapping = (shortId: string, data: PageData) => {
+  const saveUrlMapping = (shortId: string, pageId: string) => {
     try {
       const urlMap = JSON.parse(localStorage.getItem(URL_MAP_KEY) || '{}');
-      urlMap[shortId] = data;
+      
+      // Salvar apenas o ID da página, não os dados completos
+      urlMap[shortId] = pageId;
       localStorage.setItem(URL_MAP_KEY, JSON.stringify(urlMap));
+      console.log('✅ URL mapping saved:', shortId, '→ pageId:', pageId, 'Total mappings:', Object.keys(urlMap).length);
     } catch (e) {
-      console.warn('Failed to save URL mapping', e);
+      console.error('❌ Failed to save URL mapping', e);
     }
   };
 
   const getDataFromShortId = (shortId: string): PageData | null => {
     try {
       const urlMap = JSON.parse(localStorage.getItem(URL_MAP_KEY) || '{}');
-      return urlMap[shortId] || null;
+      const pageId = urlMap[shortId];
+      
+      console.log('🔍 Looking for shortId:', shortId);
+      console.log('📋 Found pageId:', pageId);
+      
+      if (!pageId) {
+        console.warn('⚠️ Short ID not mapped:', shortId);
+        return null;
+      }
+      
+      // Buscar os dados completos no savedPages
+      const savedPages = loadSavedPages();
+      const page = savedPages.find(p => p.id === pageId);
+      
+      if (page) {
+        console.log('✅ Page data found!');
+        return page.data;
+      } else {
+        console.warn('⚠️ Page not found in savedPages:', pageId);
+        return null;
+      }
     } catch (e) {
       console.warn('Failed to get URL mapping', e);
       return null;
@@ -348,7 +427,33 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
 
   useEffect(() => {
     const pages = loadSavedPages();
-    setSavedPages(pages);
+    
+    // Migrar páginas antigas sem shortId
+    let needsMigration = false;
+    const migratedPages = pages.map(page => {
+      if (!page.shortId) {
+        needsMigration = true;
+        const shortId = generateShortId();
+        console.log('🔄 Migrating old page to short URL system:', page.id, '→', shortId);
+        
+        // Save mapping for old page (shortId → pageId)
+        saveUrlMapping(shortId, page.id);
+        
+        // Update URL
+        const url = `${window.location.origin}${window.location.pathname}#/view/${shortId}`;
+        return { ...page, shortId, url };
+      }
+      return page;
+    });
+    
+    if (needsMigration) {
+      console.log('✅ Migration complete. Saving updated pages...');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedPages));
+      setSavedPages(migratedPages);
+    } else {
+      setSavedPages(pages);
+    }
+    
     try {
       const tn = localStorage.getItem('team-memory:teamName') || '';
       setTeamName(tn);
@@ -359,9 +464,40 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
 
   const persistSavedPages = (pages: Array<any>) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(pages));
+      const pagesStr = JSON.stringify(pages);
+      const sizeInBytes = new Blob([pagesStr]).size;
+      const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+      
+      console.log('💾 Attempting to save pages to localStorage...');
+      console.log('📊 Total size:', sizeInMB, 'MB');
+      console.log('📄 Number of pages:', pages.length);
+      
+      localStorage.setItem(STORAGE_KEY, pagesStr);
+      console.log('✅ Pages saved successfully!');
+      
+      // Verificar se realmente salvou
+      const verification = localStorage.getItem(STORAGE_KEY);
+      if (verification) {
+        const parsed = JSON.parse(verification);
+        console.log('✅ Verification: Found', parsed.length, 'pages in localStorage');
+      } else {
+        console.error('❌ Verification failed: localStorage is empty after save!');
+      }
     } catch (e) {
-      console.warn('Failed to persist saved pages', e);
+      console.error('❌ Failed to persist saved pages', e);
+      
+      if (e instanceof Error) {
+        if (e.name === 'QuotaExceededError') {
+          console.error('💥 QUOTA EXCEEDED! localStorage is full!');
+          console.error('💡 Suggestion: Reduce image/video sizes or delete old pages');
+          setToast({ 
+            message: 'Erro: Espaço de armazenamento cheio! Reduza o tamanho das imagens/vídeos ou delete páginas antigas.', 
+            type: 'error' 
+          });
+        } else {
+          console.error('Error details:', e.message);
+        }
+      }
     }
   };
 
@@ -387,8 +523,8 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
       shortId = existingPage?.shortId || generateShortId();
       const updatedAt = new Date().toISOString();
       
-      // Save mapping
-      saveUrlMapping(shortId, data);
+      // Save mapping (shortId → pageId)
+      saveUrlMapping(shortId, editingPageId);
       
       const url = `${window.location.origin}${window.location.pathname}#/view/${shortId}`;
       const serialized = safeBase64Encode(JSON.stringify(data));
@@ -406,14 +542,20 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
       shortId = generateShortId();
       const createdAt = new Date().toISOString();
       
-      // Save mapping
-      saveUrlMapping(shortId, data);
+      console.log('📝 Creating new page:', id);
+      console.log('🔑 Generated shortId:', shortId);
+      
+      // Save mapping (shortId → pageId)
+      saveUrlMapping(shortId, id);
       
       const url = `${window.location.origin}${window.location.pathname}#/view/${shortId}`;
       const serialized = safeBase64Encode(JSON.stringify(data));
       const entry = { id, data, serialized, url, qrDataUrl: null as string | null, createdAt, shortId };
       next = [entry, ...savedPages];
       currentId = id;
+      
+      console.log('📦 Page entry created. Total pages:', next.length);
+      
       setToast({ message: t('pageSavedSuccess'), type: 'success' });
     }
 

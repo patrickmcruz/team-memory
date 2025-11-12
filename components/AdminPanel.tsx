@@ -55,6 +55,36 @@ const AdminPanel: React.FC<{
               </ul>
             )}
           </div>
+
+          {/* Clear All Data Section */}
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-semibold text-red-700 mb-2">🗑️ {t('dangerZone')}</h4>
+            <p className="text-xs text-slate-600 mb-3">{t('clearAllWarning')}</p>
+            <button 
+              onClick={() => {
+                if (confirm(t('confirmClearAll'))) {
+                  try {
+                    // Clear all team-memory related localStorage
+                    localStorage.removeItem('team-memory:savedPages');
+                    localStorage.removeItem('team-memory:urlMap');
+                    localStorage.removeItem('team-memory:teamName');
+                    
+                    setSavedPages([]);
+                    setToast({ message: t('allDataCleared'), type: 'success' });
+                    
+                    console.log('🗑️ All localStorage data cleared successfully');
+                  } catch (e) {
+                    console.error('Failed to clear localStorage', e);
+                    setToast({ message: t('clearDataError'), type: 'error' });
+                  }
+                }
+              }}
+              className="w-full bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <TrashIcon />
+              {t('clearAllData')}
+            </button>
+          </div>
         </div>
       </div>
     </div>
