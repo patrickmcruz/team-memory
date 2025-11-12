@@ -66,7 +66,7 @@ const QRCodeDisplay: React.FC<{ url: string | null; setToast: (toast: {message: 
             dark: '#1e293b',
             light: '#FFFFFF',
           },
-          errorCorrectionLevel: 'H',
+          errorCorrectionLevel: 'M',
         });
         setIsQrRendered(true);
         try {
@@ -179,7 +179,7 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     mediaItems: [],
   });
   const [savedData, setSavedData] = useState<PageData | null>(null);
-  const [savedPages, setSavedPages] = useState<Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string }>>([]);
+  const [savedPages, setSavedPages] = useState<Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string; shortId?: string }>>([]);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [teamName, setTeamName] = useState<string>('');
@@ -227,19 +227,30 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
 
       for (const file of files as File[]) {
         const type = file.type.startsWith('image/') ? 'image' : 'video';
-        const maxSize = type === 'image' ? 5 * 1024 * 1024 : 100 * 1024 * 1024; // 5MB for images, 100MB for videos
-        const maxSizeLabel = type === 'image' ? '5MB' : '100MB';
+        const maxSize = type === 'image' ? 5 * 1024 * 1024 : 20 * 1024 * 1024; // 5MB for images, 20MB for videos
+        const maxSizeLabel = type === 'image' ? '5MB' : '20MB';
         
         if (file.size > maxSize) {
-            setToast({ message: `File ${file.name} is too large (max ${maxSizeLabel}).`, type: 'error' });
+            setToast({ message: `${file.name} ${t('fileTooLarge')} (max ${maxSizeLabel})`, type: 'error' });
             continue;
         }
-        const dataUrl = await fileToBase64(file);
-        newMediaItems.push({ id: `${Date.now()}-${file.name}`, type, dataUrl, name: file.name });
+
+        try {
+          setToast({ message: `${t('uploading')} ${file.name}...`, type: 'success' });
+          const dataUrl = await fileToBase64(file);
+          newMediaItems.push({ id: `${Date.now()}-${file.name}`, type, dataUrl, name: file.name });
+        } catch (error) {
+          console.error('Error uploading file:', file.name, error);
+          setToast({ message: `${t('uploadFailed')} ${file.name}`, type: 'error' });
+        }
       }
       
       updateData('mediaItems', [...data.mediaItems, ...newMediaItems]);
       setMediaUploading(false);
+      
+      if (newMediaItems.length > 0) {
+        setToast({ message: t('uploadSuccess'), type: 'success' });
+      }
     }
   };
 
@@ -291,7 +302,38 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     return btoa(unescape(encodeURIComponent(str)));
   };
 
+  // Generate short 8-character base62 ID
+  const generateShortId = () => {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
   const STORAGE_KEY = 'team-memory:savedPages';
+  const URL_MAP_KEY = 'team-memory:urlMap';
+
+  const saveUrlMapping = (shortId: string, data: PageData) => {
+    try {
+      const urlMap = JSON.parse(localStorage.getItem(URL_MAP_KEY) || '{}');
+      urlMap[shortId] = data;
+      localStorage.setItem(URL_MAP_KEY, JSON.stringify(urlMap));
+    } catch (e) {
+      console.warn('Failed to save URL mapping', e);
+    }
+  };
+
+  const getDataFromShortId = (shortId: string): PageData | null => {
+    try {
+      const urlMap = JSON.parse(localStorage.getItem(URL_MAP_KEY) || '{}');
+      return urlMap[shortId] || null;
+    } catch (e) {
+      console.warn('Failed to get URL mapping', e);
+      return null;
+    }
+  };
 
   const loadSavedPages = useCallback(() => {
     try {
@@ -335,27 +377,25 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     setSavedData(data);
     setActiveTab('share');
 
-    // prepare entry
-    const serialized = (() => {
-      try { return safeBase64Encode(JSON.stringify(data)); } catch { return null; }
-    })();
-
-    if (!serialized) {
-      setToast({ message: 'Failed to serialize page', type: 'error' });
-      return;
-    }
-
-    const url = `${window.location.origin}${window.location.pathname}#/view/${serialized}`;
-    
-    let next: Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string }>;
+    let next: Array<{ id: string; data: PageData; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string; shortId?: string }>;
     let currentId: string;
+    let shortId: string;
 
     if (editingPageId) {
       // Atualizando página existente
+      const existingPage = savedPages.find(p => p.id === editingPageId);
+      shortId = existingPage?.shortId || generateShortId();
       const updatedAt = new Date().toISOString();
+      
+      // Save mapping
+      saveUrlMapping(shortId, data);
+      
+      const url = `${window.location.origin}${window.location.pathname}#/view/${shortId}`;
+      const serialized = safeBase64Encode(JSON.stringify(data));
+      
       next = savedPages.map(p => 
         p.id === editingPageId 
-          ? { ...p, data, serialized, url, updatedAt, qrDataUrl: null }
+          ? { ...p, data, serialized, url, updatedAt, qrDataUrl: null, shortId }
           : p
       );
       currentId = editingPageId;
@@ -363,8 +403,15 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     } else {
       // Criando nova página
       const id = Date.now().toString();
+      shortId = generateShortId();
       const createdAt = new Date().toISOString();
-      const entry = { id, data, serialized, url, qrDataUrl: null as string | null, createdAt };
+      
+      // Save mapping
+      saveUrlMapping(shortId, data);
+      
+      const url = `${window.location.origin}${window.location.pathname}#/view/${shortId}`;
+      const serialized = safeBase64Encode(JSON.stringify(data));
+      const entry = { id, data, serialized, url, qrDataUrl: null as string | null, createdAt, shortId };
       next = [entry, ...savedPages];
       currentId = id;
       setToast({ message: t('pageSavedSuccess'), type: 'success' });
@@ -375,11 +422,14 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
 
     // Try to pre-generate QR data URL using the library (fallback will be handled by QRCodeDisplay)
     try {
-      const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2, errorCorrectionLevel: 'H' });
-      // update entry with qrDataUrl
-      const updated = next.map(p => p.id === currentId ? { ...p, qrDataUrl } : p);
-      setSavedPages(updated);
-      persistSavedPages(updated);
+      const url = next.find(p => p.id === currentId)?.url;
+      if (url) {
+        const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2, errorCorrectionLevel: 'M' });
+        // update entry with qrDataUrl
+        const updated = next.map(p => p.id === currentId ? { ...p, qrDataUrl } : p);
+        setSavedPages(updated);
+        persistSavedPages(updated);
+      }
     } catch (e) {
       // ignore — QR will be generated in the canvas and stored via onQrReady
       console.warn('Pre-generate QR failed', e);
@@ -410,19 +460,19 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
     return data.recipientName.trim() !== '' || data.mainMessage.trim() !== '' || hasColleagueMessageContent || data.mediaItems.length > 0;
   }, [data]);
 
-  const serializedSavedData = useMemo(() => {
-    if(!savedData) return null;
-    try {
-      return safeBase64Encode(JSON.stringify(savedData));
-    } catch (e) {
-      return null;
-    }
-  }, [savedData]);
-
   const shareableUrl = useMemo(() => {
-    if (!serializedSavedData) return null;
-    return `${window.location.origin}${window.location.pathname}#/view/${serializedSavedData}`;
-  }, [serializedSavedData]);
+    // Get the most recent saved page URL (which uses short ID)
+    if (savedPages.length > 0) {
+      // If editing, find the edited page's URL
+      if (editingPageId) {
+        const editedPage = savedPages.find(p => p.id === editingPageId);
+        if (editedPage) return editedPage.url;
+      }
+      // Otherwise, return the first (most recent) page URL
+      return savedPages[0].url;
+    }
+    return null;
+  }, [savedPages, editingPageId]);
   
   const formInputStyle = "mt-1 block w-full rounded-lg border-slate-300 bg-white py-2 px-3 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-sm transition";
   const formSelectStyle = formInputStyle + " pr-8";
@@ -444,17 +494,20 @@ const EditorView: React.FC<{ error: string | null }> = ({ error }) => {
             {editingPageId && (
               <button 
                 onClick={handleNewPage} 
-                className="flex items-center gap-2 rounded-md border border-indigo-600 bg-white text-indigo-600 py-2 px-3 text-sm hover:bg-indigo-50 transition-all"
+                className="flex items-center gap-2 rounded-md border border-indigo-600 bg-white text-indigo-600 py-2 px-3 text-sm font-medium hover:bg-indigo-50 transition-all"
               >
                 <PlusIcon />
                 <span>{t('newPage')}</span>
               </button>
             )}
-            <button onClick={() => setAdminOpen(true)} title={t('admin')} className="p-2 rounded-md border border-slate-300 hover:bg-slate-100">
+            <button 
+              onClick={() => setAdminOpen(true)} 
+              className="rounded-md border border-slate-300 py-2 px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-400 transition-all"
+            >
               {t('admin')}
             </button>
             <div className="relative">
-              <button onClick={() => setSettingsOpen(!settingsOpen)} className="flex items-center gap-2 rounded-md border border-slate-300 py-2 px-3 text-sm text-slate-600 hover:bg-slate-100 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
+              <button onClick={() => setSettingsOpen(!settingsOpen)} className="flex items-center gap-2 rounded-md border border-slate-300 py-2 px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
                 <SettingsIcon />
                 <span>{t('settings')}</span>
               </button>

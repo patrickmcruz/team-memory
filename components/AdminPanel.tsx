@@ -2,7 +2,7 @@ import React from 'react';
 import { TrashIcon } from './icons';
 import { useTranslation } from '../App';
 
-type SavedPage = { id: string; data: any; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string };
+type SavedPage = { id: string; data: any; serialized: string; url: string; qrDataUrl?: string | null; createdAt: string; updatedAt?: string; shortId?: string };
 
 const AdminPanel: React.FC<{
   open: boolean;

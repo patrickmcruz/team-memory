@@ -23,8 +23,12 @@ const translations = {
     "photoVideoGallery": "Galeria de Fotos e Vídeos",
     "uploadFiles": "Carregar arquivos",
     "dragAndDrop": "ou arraste e solte",
-    "fileTypes": "PNG, JPG, GIF até 5MB | MP4 até 100MB",
+    "fileTypes": "PNG, JPG, GIF até 5MB | MP4 até 20MB",
     "processingFiles": "Processando arquivos...",
+    "fileTooLarge": "é muito grande",
+    "uploading": "Enviando",
+    "uploadFailed": "Falha ao enviar",
+    "uploadSuccess": "Arquivos enviados com sucesso!",
     "livePreview": "Pré-visualização ao Vivo",
     "shareYourCreation": "Compartilhe Sua Criação",
     "qrCodeExplanation": "Imprima este código QR em um presente. Ao ser escaneado, ele abrirá a bela página de memórias que você criou.",
@@ -35,7 +39,7 @@ const translations = {
     "landingHeroTitle": "Para um colega inesquecível,",
     "landingHeroTitleMale": "Para um colega inesquecível,",
     "landingHeroTitleFemale": "Para uma colega inesquecível,",
-    "landingDefaultRecipient": "Nosso Amigo",
+    "landingDefaultRecipient": "Nossa Amiga",
     "landingDefaultMessage": "Reunimos algumas memórias para celebrar seu tempo conosco. Obrigado por tudo!",
     "landingMessagePlaceholder": "...",
     "landingAnonymousAuthor": "Anônimo",
@@ -100,8 +104,12 @@ const translations = {
     "photoVideoGallery": "Photo & Video Gallery",
     "uploadFiles": "Upload files",
     "dragAndDrop": "or drag and drop",
-    "fileTypes": "PNG, JPG, GIF up to 5MB | MP4 up to 100MB",
+    "fileTypes": "PNG, JPG, GIF up to 5MB | MP4 up to 20MB",
     "processingFiles": "Processing files...",
+    "fileTooLarge": "is too large",
+    "uploading": "Uploading",
+    "uploadFailed": "Failed to upload",
+    "uploadSuccess": "Files uploaded successfully!",
     "livePreview": "Live Preview",
     "shareYourCreation": "Share Your Creation",
     "qrCodeExplanation": "Print this QR code on a gift. When scanned, it will open the beautiful memory page you've created.",
@@ -218,12 +226,36 @@ const AppContent: React.FC = () => {
         try {
           setError(null);
           setView('loading');
-          const base64Data = hash.substring(7);
-          // Safe base64 decode to support Unicode characters
-          const jsonData = decodeURIComponent(escape(atob(base64Data)));
-          const parsedData = JSON.parse(jsonData);
-          setPageData(parsedData);
-          setView('viewer');
+          const hashData = hash.substring(7);
+          
+          let parsedData: PageData | null = null;
+          
+          // Try short ID first (8 characters)
+          if (hashData.length === 8) {
+            try {
+              const urlMap = JSON.parse(localStorage.getItem('team-memory:urlMap') || '{}');
+              parsedData = urlMap[hashData] || null;
+            } catch (e) {
+              console.warn('Failed to load from short URL', e);
+            }
+          }
+          
+          // Fallback to base64 decode (for backward compatibility or long URLs)
+          if (!parsedData) {
+            try {
+              const jsonData = decodeURIComponent(escape(atob(hashData)));
+              parsedData = JSON.parse(jsonData);
+            } catch (e) {
+              console.warn('Failed to decode base64 data', e);
+            }
+          }
+          
+          if (parsedData) {
+            setPageData(parsedData);
+            setView('viewer');
+          } else {
+            throw new Error('Could not load page data');
+          }
         } catch (e) {
           console.error("Failed to parse data from URL hash", e);
           setError(t('errorCorruptedLink'));
